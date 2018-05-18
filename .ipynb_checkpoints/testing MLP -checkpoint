@@ -1,0 +1,420 @@
+{
+ "cells": [
+  {
+   "cell_type": "code",
+   "execution_count": 1,
+   "metadata": {
+    "collapsed": true
+   },
+   "outputs": [],
+   "source": [
+    "from tensorflow.examples.tutorials.mnist import input_data\n",
+    "import tensorflow as tf"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 2,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "#new class containing everything for a convolutional network\n",
+    "import Minst_net as mn\n",
+    "\n",
+    "import numpy as np\n",
+    "import scipy\n",
+    "import matplotlib.pyplot as plt\n",
+    "%matplotlib inline"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 3,
+   "metadata": {},
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "Extracting data/MNIST/train-images-idx3-ubyte.gz\n",
+      "Extracting data/MNIST/train-labels-idx1-ubyte.gz\n",
+      "Extracting data/MNIST/t10k-images-idx3-ubyte.gz\n",
+      "Extracting data/MNIST/t10k-labels-idx1-ubyte.gz\n"
+     ]
+    }
+   ],
+   "source": [
+    "#get the MNIST data from tensorflow \n",
+    "\n",
+    "data = input_data.read_data_sets('data/MNIST/', one_hot=True)"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 4,
+   "metadata": {
+    "collapsed": true
+   },
+   "outputs": [],
+   "source": [
+    "#structure is encoded for each layer as:\n",
+    "#[size of filters, number of filters, use biases, use pooling, use biases]\n",
+    "#the last two get converted to boolean from 1 or 0\n",
+    "#there is a fully connected layer added by default at the end of the network\n",
+    "structure =np.array([[16,7,0,0],[8,9,0,0],[4,11,0,0]])"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {
+    "scrolled": false
+   },
+   "outputs": [],
+   "source": [
+    "#create a new instance of the network\n",
+    "net = mn.network()\n",
+    "\n",
+    "#setup - load weights from previosly trained model\n",
+    "net.setup(structure=structure, data = data)"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "Optimization Iteration:      1, Training Accuracy:  10.9%\n",
+      "Optimization Iteration:    101, Training Accuracy:  75.0%\n"
+     ]
+    }
+   ],
+   "source": [
+    "#an untrained model would be optimised here\n",
+    "\n",
+    "net.optimize(6000)"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {
+    "collapsed": true
+   },
+   "outputs": [],
+   "source": [
+    "#the model can then be saved\n",
+    "net.save()"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "#test on an image from the test set\n",
+    "\n",
+    "im=data.test.images[6]\n",
+    "prediction = net.give_class(im)\n",
+    "\n",
+    "print(\"Prediction is: %d\"%prediction)\n",
+    "\n",
+    "net.plot_image(im)"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {
+    "collapsed": true
+   },
+   "outputs": [],
+   "source": [
+    "#next get the lime package to use as an explainer\n",
+    "import lime\n",
+    "from lime import lime_image"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {
+    "collapsed": true
+   },
+   "outputs": [],
+   "source": [
+    "#lime requires an rgb image to work - this code makes the image supplied look like an rgb image\n",
+    "#but really onlt one of the channels will be used (so there is no need to invert with 1-)\n",
+    "\n",
+    "image = im.reshape(net.img_shape)\n",
+    "image = np.dstack([image.astype(np.float32)] * 3)\n",
+    "#create a lime image explainer\n",
+    "explainer = lime_image.LimeImageExplainer()"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "#check that the prediction hasn't changed \n",
+    "net.session.run(net.y_pred,feed_dict={net.x: [im]})"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {
+    "collapsed": true
+   },
+   "outputs": [],
+   "source": [
+    "#the prediction we want to have explained to us\n",
+    "prediction = 8\n",
+    "\n",
+    "#Visual backprop method is done first\n",
+    "explain = net.session.run(net.layer_conv3,feed_dict={net.x: [im]})\n",
+    "num_filters = explain.shape[3]\n",
+    "temp = explain[0, :, :,0,]\n",
+    "i=1\n",
+    "while i<num_filters:\n",
+    "    temp = temp + explain[0,:, :, i]\n",
+    "    i=i+1\n",
+    "\n",
+    "explain = temp/num_filters"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {
+    "collapsed": true
+   },
+   "outputs": [],
+   "source": [
+    "\n",
+    "\n",
+    "temp = net.average_output(layer=net.layer_conv2, image=im)\n",
+    "scale = pow((temp.size),0.5)/pow((explain.size),0.5)\n",
+    "explain = scipy.ndimage.zoom(explain,scale)\n",
+    "explain =np.multiply(explain,temp)\n",
+    "\n",
+    "temp = net.average_output(layer=net.layer_conv1, image=im)\n",
+    "scale = pow((temp.size),0.5)/pow((explain.size),0.5)\n",
+    "explain = scipy.ndimage.zoom(explain,scale)\n",
+    "explain =np.multiply(explain,temp)\n",
+    "\n",
+    "explain =explain-np.amin(explain)\n",
+    "explain =explain/np.amax(explain)\n",
+    "plt.imshow(explain)"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {
+    "collapsed": true,
+    "scrolled": true
+   },
+   "outputs": [],
+   "source": [
+    "overlay = np.multiply(0.5-image,0.5-np.dstack([explain.astype(np.float32)] * 3))\n",
+    "overlay =overlay-np.amin(overlay)\n",
+    "overlay =overlay/np.amax(overlay)\n",
+    "plt.imshow(overlay)"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {
+    "collapsed": true
+   },
+   "outputs": [],
+   "source": [
+    "%%time\n",
+    "explanation = explainer.explain_instance(image,\n",
+    "                                         net.give_prob,\n",
+    "                                         top_labels=10,\n",
+    "                                         hide_color=[0.5,0.5,0.5],\n",
+    "                                         num_features=28*28,\n",
+    "                                         num_samples=100000,\n",
+    "                                         qs_kernel_size=3,\n",
+    "                                         qs_max_dist=0,\n",
+    "                                         method='mask')"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {
+    "collapsed": true
+   },
+   "outputs": [],
+   "source": [
+    "label = 4\n",
+    "temp, mask = explanation.get_image_and_mask(label,\n",
+    "                                            positive_only=False,\n",
+    "                                            num_features=28*28,\n",
+    "                                            hide_rest=False)\n",
+    "\n",
+    "plt.imshow(mask)\n",
+    "plt.show()\n",
+    "\n",
+    "segments = explanation.segments\n",
+    "exp = explanation.local_exp[label]\n",
+    "heatmap = np.zeros(segments.shape)\n",
+    "image = explanation.image\n",
+    "\n",
+    "for f, w in exp[:28*28]:\n",
+    "    heatmap[segments == f] = w\n",
+    "    temp[segments == f] = image[segments == f].copy()\n",
+    "    temp[segments == f, 0] = np.max(image)\n",
+    "\n",
+    "heatmap=heatmap-np.amin(heatmap)\n",
+    "heatmap=heatmap/np.amax(heatmap)\n",
+    "plt.imshow(heatmap)"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {
+    "collapsed": true
+   },
+   "outputs": [],
+   "source": [
+    "bandsize = 0.4\n",
+    "bandmid = 0.5\n",
+    "high_contrast = heatmap-(bandmid+bandsize/2)\n",
+    "high_contrast =high_contrast*(high_contrast<0).astype(int)+bandsize\n",
+    "high_contrast =high_contrast*(high_contrast>0).astype(int)\n",
+    "high_contrast = high_contrast/bandsize\n",
+    "plt.imshow(high_contrast)"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {
+    "collapsed": true
+   },
+   "outputs": [],
+   "source": [
+    "overlay = np.multiply(0.5-image,0.5-np.dstack([heatmap.astype(np.float32)] * 3))\n",
+    "overlay =overlay-np.amin(overlay)\n",
+    "overlay =overlay/np.amax(overlay)\n",
+    "plt.imshow(overlay)"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {
+    "collapsed": true
+   },
+   "outputs": [],
+   "source": [
+    "plt.imshow(overlay*0+0.5)"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {
+    "collapsed": true
+   },
+   "outputs": [],
+   "source": [
+    "label = 4\n",
+    "temp, mask = explanation.get_image_and_mask(label,\n",
+    "                                            positive_only=False,\n",
+    "                                            num_features=28*28,\n",
+    "                                            hide_rest=False)\n",
+    "plt.imshow(temp)"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {
+    "collapsed": true
+   },
+   "outputs": [],
+   "source": [
+    "four_heatmap=high_contrast"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {
+    "collapsed": true
+   },
+   "outputs": [],
+   "source": [
+    "heatmap =(four_heatmap-eight_heatmap)"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {
+    "collapsed": true
+   },
+   "outputs": [],
+   "source": [
+    "plt.imshow(four_heatmap)"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {
+    "collapsed": true
+   },
+   "outputs": [],
+   "source": [
+    "plt.imshow(eight_heatmap)"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {
+    "collapsed": true
+   },
+   "outputs": [],
+   "source": [
+    "plt.imshow(heatmap)"
+   ]
+  }
+ ],
+ "metadata": {
+  "kernelspec": {
+   "display_name": "Python 3",
+   "language": "python",
+   "name": "python3"
+  },
+  "language_info": {
+   "codemirror_mode": {
+    "name": "ipython",
+    "version": 3
+   },
+   "file_extension": ".py",
+   "mimetype": "text/x-python",
+   "name": "python",
+   "nbconvert_exporter": "python",
+   "pygments_lexer": "ipython3",
+   "version": "3.6.1"
+  }
+ },
+ "nbformat": 4,
+ "nbformat_minor": 2
+}
