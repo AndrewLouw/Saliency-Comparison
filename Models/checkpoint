@@ -1,2 +1,2 @@
-model_checkpoint_path: "MLP"
-all_model_checkpoint_paths: "MLP"
+model_checkpoint_path: "MLP_Flipped"
+all_model_checkpoint_paths: "MLP_Flipped"

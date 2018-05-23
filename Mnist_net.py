@@ -15,7 +15,7 @@ class network(object):
         self.train_batch_size = 64
         self.total_iterations = 0
 
-    def setup(self,load = None, structure=None,end_relu = False,end_biases = False, data = None, offset = 0):
+    def setup(self,load = None, structure=None,end_relu = False,end_biases = False, data = None, offset = 0, scale = 1):
         """
         Creates a network
         load: the filepath of the network to load (must be compatible with "structure"), if none then a new network will be created
@@ -27,8 +27,10 @@ class network(object):
         end_biases: determines if the final layer has biases;
         data: none defaults to the MNIST dataset from the Tensorflow examples folder, but others can be used (supplying the MNIST dataset is quicker if it is already loaded);
         offset: puts an offset on all images coming into the network e.g -0.5 will make all MNIST images between -0.5 and 0.5 instead of 0 to 1
+        scale: scales the input image by any value, applies before offset
         
         """
+        self.scale = scale
         self.offset = offset
         self.structure = structure
         self.data = data
@@ -47,7 +49,8 @@ class network(object):
         self.num_classes = 10
 
         self.x = tf.placeholder(tf.float32, shape=[None, self.img_size_flat], name='x')
-        self.offset_layer = tf.add(self.x,self.offset)
+        self.scale_layer = tf.multiply(self.x,self.scale)
+        self.offset_layer = tf.add(self.scale_layer,self.offset)
         self.x_image = tf.reshape(self.offset_layer, [-1, self.img_size, self.img_size, self.num_channels])
         self.y_true = tf.placeholder(tf.float32, shape=[None, self.num_classes], name='y_true')
         self.y_true_cls = tf.argmax(self.y_true, axis=1)
@@ -558,7 +561,7 @@ class network(object):
         plt.show()
 
     def plot_image(self,image):
-        plt.imshow(image.reshape(self.img_shape),
+        plt.imshow(np.multiply(image.reshape(self.img_shape),self.scale)+self.offset,
                    interpolation='nearest',
                    cmap='binary')
 
@@ -736,7 +739,7 @@ class network(object):
                 raise ValueError('node argument of improper type/length')
 
         #begin by creating RelU matrices
-        y = x.flatten().copy()+self.offset
+        y = np.multiply(x.flatten(),self.scale)+self.offset
         R = [np.identity(x.size)]
         for L in range (0,nlayers-nlayersmin):
             y = y.dot(R[L]).dot(weights[L])+biases[L]
